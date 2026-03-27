@@ -317,6 +317,14 @@
             transform-origin: center;
         }
 
+        #weaknessTrackerCard {
+            user-select: none;
+        }
+        #weaknessTrackerCard:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 34px rgba(0, 0, 0, 0.10) !important;
+        }
+
         .date-chip {
             display: inline-flex;
             align-items: center;
@@ -1315,13 +1323,18 @@
                     <div id="todaySchedule" class="divide-y divide-black/5"></div>
                 </div>
 
-                <!-- Weakness Tracker Section -->
-                <div class="glass bouncy-card rounded-3xl p-8 mb-7 border-l-4 border-rose-500">
+                <!-- Weakness Tracker Section (Collapsible Card - Expanded by Default) -->
+                <div id="weaknessTrackerCard" class="glass bouncy-card rounded-3xl p-8 mb-7 border-l-4 border-rose-500 cursor-pointer transition-all duration-300 hover:shadow-lg" onclick="toggleWeaknessTracker(event)">
                     <div class="flex items-center justify-between gap-3 mb-4">
                         <h3 class="text-xl font-extrabold text-rose-600">⚠️ Weakness Tracker (Missed Deadlines)</h3>
-                        <span id="weaknessCount" class="text-sm font-extrabold text-rose-500">0 tasks</span>
+                        <div class="flex items-center gap-3">
+                            <span id="weaknessCount" class="text-sm font-extrabold text-rose-500">0 tasks</span>
+                            <button id="weaknessToggleBtn" class="w-8 h-8 rounded-full bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/30 dark:hover:bg-rose-900/50 flex items-center justify-center transition-all" title="Click to expand/collapse" onclick="event.stopPropagation(); toggleWeaknessTracker(event)">
+                                <span id="weaknessToggleIcon" class="text-rose-600 dark:text-rose-400 font-bold text-lg transition-transform duration-300">▼</span>
+                            </button>
+                        </div>
                     </div>
-                    <div id="weaknessList" class="divide-y divide-black/5"></div>
+                    <div id="weaknessList" class="divide-y divide-black/5 transition-all duration-300 overflow-hidden"></div>
                 </div>
 
                 <h2 class="text-xl font-extrabold text-slate-800 mb-4">📚 Quick Subject Access</h2>
@@ -1698,6 +1711,42 @@
         </div>
     </div>
 
+    <!-- Schedule Next Task Modal -->
+    <div id="scheduleTaskModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-strong rounded-3xl shadow-2xl w-full max-w-lg">
+            <div class="p-6 border-b border-white/50 flex justify-between items-center">
+                <h3 class="text-xl font-extrabold text-slate-800">📅 Schedule Next Task</h3>
+                <button onclick="closeScheduleTaskModal()" class="text-slate-500 hover:text-slate-800 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block text-sm font-extrabold text-slate-700 mb-2">📚 Select Subject</label>
+                    <select id="nextTaskSubject" onchange="loadTopicsForSubject()" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">-- Choose a Subject --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-extrabold text-slate-700 mb-2">📖 Select Topic</label>
+                    <select id="nextTaskTopic" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" disabled>
+                        <option value="">-- Select a subject first --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-extrabold text-slate-700 mb-2">📆 Start Date</label>
+                    <div class="flex gap-2 mb-2">
+                        <button onclick="setNextTaskDate('today')" class="flex-1 px-3 py-2 rounded-lg text-sm font-bold bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Today</button>
+                        <button onclick="setNextTaskDate('tomorrow')" class="flex-1 px-3 py-2 rounded-lg text-sm font-bold bg-green-100 text-green-700 hover:bg-green-200">Tomorrow</button>
+                    </div>
+                    <input type="date" id="nextTaskDate" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="flex gap-3 pt-4">
+                    <button onclick="closeScheduleTaskModal()" class="flex-1 px-4 py-3 rounded-xl font-bold text-slate-700 bg-slate-200 hover:bg-slate-300">Cancel</button>
+                    <button onclick="confirmScheduleNextTask()" class="flex-1 px-4 py-3 rounded-xl font-bold text-white btn-glow" style="background: linear-gradient(135deg, #667eea, #764ba2);">✅ Schedule Task</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Hidden file input for import -->
     <input type="file" id="importFile" class="hidden" accept=".json" onchange="handleImport(event)">
 
@@ -1782,6 +1831,9 @@
                 customDates: {},
                 customTestDates: {},
                 customTests: [],
+                activeDailyTaskId: null,
+                taskQueueHistory: [],
+                pendingScheduleRestore: null,
                 dailyNotes: {},
                 studySessions: [],
                 notes: '',
@@ -2192,6 +2244,9 @@
             appData.userProgress.customDates ||= {};
             appData.userProgress.customTestDates ||= {};
             appData.userProgress.customTests ||= [];
+            appData.userProgress.activeDailyTaskId ||= null;
+            appData.userProgress.taskQueueHistory ||= [];
+            appData.userProgress.pendingScheduleRestore ||= null;
             appData.userProgress.dailyNotes ||= {};
             appData.userProgress.studySessions ||= [];
             appData.userProgress.notes ||= '';
@@ -2604,6 +2659,33 @@
             setActiveTab(activeTabId, true);
         }
 
+        // Weakness Tracker collapse state
+        function toggleWeaknessTracker() {
+            const list = document.getElementById('weaknessList');
+            const icon = document.getElementById('weaknessToggleIcon');
+            if (!list || !icon) return;
+            
+            const isCollapsed = list.style.maxHeight === '0px';
+            
+            if (isCollapsed) {
+                // Expand
+                list.style.maxHeight = list.scrollHeight + 'px';
+                list.style.opacity = '1';
+                list.style.padding = '0';
+                icon.textContent = '▼';
+                appData.userProgress.weaknessTrackerCollapsed = false;
+            } else {
+                // Collapse
+                list.style.maxHeight = '0px';
+                list.style.opacity = '0';
+                list.style.padding = '0';
+                icon.textContent = '▶';
+                appData.userProgress.weaknessTrackerCollapsed = true;
+            }
+            
+            saveUserProgress();
+        }
+
         function renderDashboard() {
             const tasks = appData.tasks;
             const completed = Object.keys(appData.userProgress.completedTasks).filter(k => appData.userProgress.completedTasks[k]).length;
@@ -2647,99 +2729,63 @@
             // Daily Focus (Today)
             // -----------------------------
             const todayISO = toLocalISODate(new Date());
-
-            const todayTasks = (appData.tasks || [])
-                .filter(t => getEffectiveTaskDate(t) === todayISO)
-                .slice()
-                .sort((a, b) => (a.subject || '').localeCompare(b.subject || '') || (a.morning || '').localeCompare(b.morning || ''));
-
-            const todayTests = getAllTestsMerged()
-                .filter(t => getEffectiveTestDate(t) === todayISO)
-                .slice()
-                .sort((a, b) => (a.number || 0) - (b.number || 0));
-
-            const todayDone = todayTasks.filter(t => appData.userProgress.completedTasks[t.id]).length;
-            const todayHours = todayTasks
-                .filter(t => appData.userProgress.completedTasks[t.id])
-                .reduce((s, t) => s + (t.hours || 0), 0);
+            const activeTask = getActiveDailyTask();
+            const activeTaskCompleted = !!(activeTask && appData.userProgress.completedTasks[activeTask.id]);
 
             const chip = document.getElementById('todayDateChip');
             if (chip) chip.textContent = `${formatDate(todayISO)} • ${getDayName(todayISO)}`;
 
             const meta = document.getElementById('todayMeta');
             if (meta) {
-                if (!todayTasks.length && !todayTests.length) {
-                    meta.textContent = `No tasks or tests scheduled for today.`;
+                if (!activeTask) {
+                    meta.textContent = `No active task yet. Choose one from the modal to begin.`;
                 } else {
-                    const parts = [];
-                    if (todayTasks.length) parts.push(`${todayTasks.length} tasks`);
-                    if (todayTests.length) parts.push(`${todayTests.length} tests`);
-                    parts.push(`${todayDone} completed • ${todayHours.toFixed(1)}h logged`);
-                    meta.textContent = parts.join(' • ');
+                    meta.textContent = activeTaskCompleted
+                        ? `Active task completed • ready for the next task modal.`
+                        : `Focus on the current pending task. New tasks stay hidden until this one is completed.`;
                 }
             }
 
             const todayList = document.getElementById('todaySchedule');
             if (todayList) {
-                if (!todayTasks.length && !todayTests.length) {
-                    todayList.innerHTML = `<div class="py-3 text-slate-500">Use Monthly Schedules to reschedule tasks/tests to today, or add a topic under a subject.</div>`;
+                if (!activeTask) {
+                    todayList.innerHTML = `
+                        <div class="py-3 text-slate-500 flex flex-col gap-3">
+                            <div>No active task has been scheduled yet. Use the modal to choose a subject and topic.</div>
+                            <button onclick="openScheduleTaskModal()" class="self-start px-4 py-2 rounded-2xl text-white font-extrabold btn-glow" style="background: linear-gradient(135deg, var(--primary), var(--primary-2));">➕ Schedule Task</button>
+                        </div>
+                    `;
                 } else {
-                    const tasksHtml = todayTasks.map(t => {
-                        const isCompleted = !!appData.userProgress.completedTasks[t.id];
-                        const pal = getSubjectProgressPalette(t.subject || 'General');
-                        const subjColor = getRandomReadableFontColor('today-subj-' + (t.subject || 'General'));
-
-                        return `
-                            <div class="py-3 flex flex-wrap items-start justify-between gap-3">
-                                <div class="min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="px-2 py-1 rounded-xl text-[11px] font-extrabold" style="background: ${pal.pillBg}; border: 1px solid ${pal.pillBorder}; color: ${subjColor};">
-                                            ${t.subject || 'General'}
-                                        </span>
-                                        <span class="font-extrabold text-slate-800" style="text-decoration: ${isCompleted ? 'line-through' : 'none'}; opacity: ${isCompleted ? '0.75' : '1'};">
-                                            ${t.morning || '-'}
-                                        </span>
-                                    </div>
-                                    <div class="text-sm text-slate-600 mt-1" style="text-decoration: ${isCompleted ? 'line-through' : 'none'}; opacity: ${isCompleted ? '0.75' : '1'};">
-                                        ${t.evening || ''}
-                                    </div>
-                                    <div class="text-xs text-slate-500 font-bold mt-1">${t.test && t.test !== '-' ? `🧪 ${t.test} • ` : ''}${t.hours || 0}h</div>
+                    const pal = getSubjectProgressPalette(activeTask.subject || 'General');
+                    const subjColor = getRandomReadableFontColor('active-task-subj-' + (activeTask.subject || 'General'));
+                    const isCompleted = !!appData.userProgress.completedTasks[activeTask.id];
+                    const activeTaskDate = getEffectiveTaskDate(activeTask) || appData.userProgress.customDates?.[activeTask.id] || '';
+                    todayList.innerHTML = `
+                        <div class="py-3 flex flex-wrap items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="px-2 py-1 rounded-xl text-[11px] font-extrabold" style="background: ${pal.pillBg}; border: 1px solid ${pal.pillBorder}; color: ${subjColor};">
+                                        ${activeTask.subject || 'General'}
+                                    </span>
+                                    <span class="font-extrabold text-slate-800" style="text-decoration: ${isCompleted ? 'line-through' : 'none'}; opacity: ${isCompleted ? '0.75' : '1'};">
+                                        ${activeTask.morning || '-'}
+                                    </span>
                                 </div>
-                                <div class="flex items-center gap-3">
-                                    <input type="checkbox" ${isCompleted ? 'checked' : ''} onchange="toggleTask('${t.id}')" class="w-5 h-5 accent-indigo-500 cursor-pointer">
+                                <div class="text-sm text-slate-600 mt-1" style="text-decoration: ${isCompleted ? 'line-through' : 'none'}; opacity: ${isCompleted ? '0.75' : '1'};">
+                                    ${activeTask.evening || ''}
+                                </div>
+                                <div class="text-xs text-slate-500 font-bold mt-1">
+                                    ${activeTask.test && activeTask.test !== '-' ? `🧪 ${activeTask.test} • ` : ''}${activeTask.hours || 0}h • Start: ${formatDate(activeTaskDate) || 'Any date'}
                                 </div>
                             </div>
-                        `;
-                    }).join('');
-
-                    const testsHtml = todayTests.length ? `
-                        <div class="pt-4 pb-2 text-xs font-extrabold text-slate-500 tracking-wider uppercase">Tests scheduled today</div>
-                        <div class="space-y-2">
-                            ${todayTests.map(t => {
-                                const effDate = getEffectiveTestDate(t);
-                                const badge = t.origin === 'personal'
-                                    ? `<span class="px-2 py-1 rounded-xl text-[11px] font-extrabold" style="background: rgba(34,197,94,0.14); border: 1px solid rgba(34,197,94,0.18); color: rgb(21,128,61);">Personal</span>`
-                                    : `<span class="px-2 py-1 rounded-xl text-[11px] font-extrabold" style="background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.18); color: rgb(79,70,229);">Blueprint</span>`;
-
-                                const focusText = t.focus || (t.subject ? `${t.subject} - Subject Test` : '-');
-                                return `
-                                    <div class="py-2 flex items-start justify-between gap-3">
-                                        <div class="min-w-0">
-                                            <div class="flex items-center gap-2 flex-wrap">
-                                                <div class="font-extrabold text-slate-800">🧪 Test ${t.number || ''}</div>
-                                                ${badge}
-                                                <div class="text-xs font-extrabold text-slate-500">${t.type || '-'} • ${t.mcqs ?? '-'} marks</div>
-                                            </div>
-                                            <div class="text-sm text-slate-600 mt-1">${focusText}</div>
-                                        </div>
-                                        <button onclick="switchTab('tests')" class="px-3 py-2 rounded-2xl text-xs font-extrabold text-white btn-glow" style="background: linear-gradient(135deg, #0ea5e9, #2563eb);">Open</button>
-                                    </div>
-                                `;
-                            }).join('')}
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" ${isCompleted ? 'checked' : ''} onchange="toggleTask('${activeTask.id}')" class="w-5 h-5 accent-indigo-500 cursor-pointer">
+                            </div>
                         </div>
-                    ` : '';
-
-                    todayList.innerHTML = tasksHtml + testsHtml;
+                        <div class="pt-3 text-xs text-slate-500 font-bold">
+                            New tasks remain hidden until this one is completed.
+                        </div>
+                    `;
                 }
             }
 
@@ -2759,8 +2805,23 @@
 
             const weaknessList = document.getElementById('weaknessList');
             const weaknessCount = document.getElementById('weaknessCount');
+            const weaknessToggleIcon = document.getElementById('weaknessToggleIcon');
             if (weaknessList && weaknessCount) {
                 weaknessCount.textContent = `${missedTasks.length} task${missedTasks.length !== 1 ? 's' : ''}`;
+                
+                // Apply collapse state (collapsed by default unless user expanded it)
+                const isCollapsed = appData.userProgress.weaknessTrackerCollapsed !== false;
+                if (isCollapsed) {
+                    weaknessList.style.maxHeight = '0px';
+                    weaknessList.style.opacity = '0';
+                    weaknessList.style.padding = '0';
+                    if (weaknessToggleIcon) weaknessToggleIcon.textContent = '▶';
+                } else {
+                    weaknessList.style.maxHeight = 'none';
+                    weaknessList.style.opacity = '1';
+                    weaknessList.style.padding = '';
+                    if (weaknessToggleIcon) weaknessToggleIcon.textContent = '▼';
+                }
                 
                 if (missedTasks.length === 0) {
                     weaknessList.innerHTML = `<div class="text-slate-500 font-bold py-3">🎉 No missed deadlines! You're on track.</div>`;
@@ -2832,6 +2893,72 @@
                 `;
             }).join('');
             document.getElementById('subjectCards').innerHTML = cardsHtml;
+        }
+
+        function getActiveDailyTask() {
+            const activeId = appData.userProgress?.activeDailyTaskId;
+            if (activeId) {
+                const found = (appData.tasks || []).find(t => t.id === activeId);
+                if (found) return found;
+            }
+
+            const pending = (appData.tasks || [])
+                .filter(t => !appData.userProgress.completedTasks[t.id])
+                .slice()
+                .sort((a, b) => {
+                    const da = getEffectiveTaskDate(a) || '9999-12-31';
+                    const db = getEffectiveTaskDate(b) || '9999-12-31';
+                    return da.localeCompare(db) || (a.subject || '').localeCompare(b.subject || '') || (a.morning || '').localeCompare(b.morning || '');
+                });
+
+            return pending[0] || null;
+        }
+
+        function getTaskById(taskId) {
+            return (appData.tasks || []).find(t => t.id === taskId) || null;
+        }
+
+        function setActiveDailyTask(taskId) {
+            appData.userProgress.activeDailyTaskId = taskId || null;
+            saveProgress();
+            renderAll();
+        }
+
+        function completeActiveTask(taskId) {
+            const task = getTaskById(taskId);
+            if (!task) return;
+            appData.userProgress.completedTasks[taskId] = true;
+            appData.userProgress.activeDailyTaskId = taskId;
+            appData.userProgress.taskQueueHistory = appData.userProgress.taskQueueHistory || [];
+            appData.userProgress.taskQueueHistory.push({
+                action: 'complete',
+                taskId,
+                timestamp: new Date().toISOString()
+            });
+            saveProgress();
+            renderAll();
+            openScheduleTaskModal();
+        }
+
+        function revertCompletedTask(taskId) {
+            if (!taskId) return;
+            delete appData.userProgress.completedTasks[taskId];
+            appData.userProgress.pendingScheduleRestore = null;
+            appData.userProgress.activeDailyTaskId = taskId;
+            appData.userProgress.taskQueueHistory = appData.userProgress.taskQueueHistory || [];
+            appData.userProgress.taskQueueHistory.push({
+                action: 'revert',
+                taskId,
+                timestamp: new Date().toISOString()
+            });
+            saveProgress();
+            renderAll();
+        }
+
+        function setInitialActiveTaskIfNeeded() {
+            if (appData.userProgress?.activeDailyTaskId) return;
+            const first = getActiveDailyTask();
+            if (first) appData.userProgress.activeDailyTaskId = first.id;
         }
 
         function calculateStreak() {
@@ -3492,10 +3619,378 @@
         // =============================================
         // TASK OPERATIONS
         // =============================================
+        // =============================================
+        // TASK QUEUE SYSTEM (Flexible Scheduling)
+        // =============================================
+        function getUnassignedTasks() {
+            // Get all tasks that haven't been scheduled to a specific date yet
+            const scheduledTaskIds = new Set(appData.tasks.map(t => t.id));
+            const allPossibleTasks = getDefaultTasks();
+            
+            // Return tasks that are not in the current appData.tasks (unscheduled)
+            // OR create a pool of available topics from subjects
+            const subjectTopicPool = createSubjectTopicPool();
+            return subjectTopicPool;
+        }
+
+        function createSubjectTopicPool() {
+            // Create a large pool of topics per subject
+            const subjectTopics = {
+                'Polity': [
+                    'Constitution: Historical Background', 'Constitution: Making of', 'Preamble & Union',
+                    'Fundamental Rights (Part III)', 'Directive Principles', 'Fundamental Duties',
+                    'Amendment Procedure', 'Union Executive: President', 'Union Executive: Vice President',
+                    'Prime Minister & Council of Ministers', 'Parliament: Lok Sabha', 'Parliament: Rajya Sabha',
+                    'Parliamentary Committees', 'Judiciary: Supreme Court', 'Judiciary: High Courts',
+                    'Judicial Review & Activism', 'Centre-State Relations', 'Emergency Provisions',
+                    'Election Commission', 'Other Constitutional Bodies', 'Local Government: Panchayati Raj',
+                    'Local Government: Municipalities', 'Governor', 'State Legislature'
+                ],
+                'History': [
+                    'Ancient: Indus Valley Civilization', 'Ancient: Vedic Age', 'Ancient: Jainism & Buddhism',
+                    'Ancient: Mauryan Empire', 'Ancient: Gupta Empire', 'Medieval: Delhi Sultanate',
+                    'Medieval: Mughal Empire', 'Medieval: Vijayanagara Empire', 'Modern: European Powers in India',
+                    'Modern: 1857 Revolt', 'Modern: British Raj', 'Modern: Social Reform Movements',
+                    'Modern: Indian National Congress', 'Modern: Moderate Phase', 'Modern: Extremist Phase',
+                    'Modern: Partition of Bengal', 'Modern: Muslim League', 'Modern: Gandhian Era',
+                    'Modern: Non-Cooperation Movement', 'Modern: Civil Disobedience', 'Modern: Quit India',
+                    'Modern: Cabinet Mission', 'Modern: Partition & Independence', 'Post-Independence: Integration'
+                ],
+                'Geography': [
+                    'Physical: Earth & Universe', 'Physical: Solar System', 'Physical: Latitudes & Longitudes',
+                    'Physical: Earth Movements', 'Physical: Rocks & Minerals', 'Physical: Landforms',
+                    'Physical: Mountains', 'Physical: Rivers & Drainage', 'Physical: Climate & Weather',
+                    'Physical: Soil Types', 'Physical: Natural Vegetation', 'Indian Geography: Physiography',
+                    'Indian Geography: Northern Mountains', 'Indian Geography: Indo-Gangetic Plains',
+                    'Indian Geography: Peninsular Plateau', 'Indian Geography: Coastal Plains',
+                    'Indian Geography: Islands', 'Indian Geography: Rivers System', 'Indian Geography: Climate',
+                    'Indian Geography: Agriculture', 'Indian Geography: Minerals', 'Indian Geography: Industries',
+                    'WB Geography: Physiography', 'WB Geography: Rivers', 'WB Geography: Climate', 'WB Geography: Economy'
+                ],
+                'Economy': [
+                    'Basics: National Income', 'Basics: GDP & GNP', 'Basics: Inflation & Deflation',
+                    'Basics: Monetary Policy', 'Basics: Fiscal Policy', 'Banking: RBI & Functions',
+                    'Banking: Commercial Banks', 'Banking: NBFCs', 'Financial Markets', 'Agriculture: Land Reforms',
+                    'Agriculture: Green Revolution', 'Agriculture: Schemes', 'Industry: Types',
+                    'Industry: Industrial Policy', 'Planning: Five Year Plans', 'Planning: NITI Aayog',
+                    'Public Finance: Budget', 'Public Finance: Taxation', 'International Trade', 'WTO & IMF',
+                    'Economic Survey', 'Budget Highlights', 'Schemes: Central Government', 'Schemes: WB State',
+                    'MSME Sector', 'Startup India', 'Digital Economy'
+                ],
+                'Science': [
+                    'Physics: Motion & Force', 'Physics: Work & Energy', 'Physics: Gravitation',
+                    'Physics: Light & Optics', 'Physics: Sound & Waves', 'Physics: Electricity',
+                    'Physics: Magnetism', 'Physics: Modern Physics', 'Chemistry: Matter & Atoms',
+                    'Chemistry: Periodic Table', 'Chemistry: Chemical Reactions', 'Chemistry: Acids & Bases',
+                    'Chemistry: Organic Chemistry', 'Chemistry: Environmental Chemistry', 'Biology: Cell Biology',
+                    'Biology: Tissues & Organs', 'Biology: Human Body Systems', 'Biology: Genetics',
+                    'Biology: Evolution', 'Biology: Plant Kingdom', 'Biology: Animal Kingdom',
+                    'Biology: Health & Diseases', 'Biology: Nutrition', 'Science & Technology: Space',
+                    'Science & Technology: Defence', 'Science & Technology: IT', 'Science & Technology: Biotech'
+                ],
+                'Environment': [
+                    'Ecology: Basics', 'Ecology: Ecosystem', 'Biodiversity: Basics', 'Biodiversity: Hotspots',
+                    'Pollution: Air', 'Pollution: Water', 'Pollution: Soil', 'Pollution: Noise',
+                    'Climate Change: Basics', 'Climate Change: Impacts', 'Climate Change: Mitigation',
+                    'Environment Acts: India', 'Wildlife Protection Act', 'Forest Conservation Act',
+                    'National Parks', 'Wildlife Sanctuaries', 'Ramsar Sites', 'Endangered Species',
+                    'Sustainable Development', 'Renewable Energy', 'Environmental Conventions',
+                    'SDGs', 'Green Technology', 'WB Biodiversity'
+                ],
+                'Current Affairs': [
+                    'National: Schemes & Policies', 'National: Awards & Honors', 'National: Appointments',
+                    'National: Sports', 'National: Summits & Events', 'International: Bilateral Relations',
+                    'International: Summits', 'International: Organizations', 'Economy: Updates',
+                    'Science & Tech: Discoveries', 'Environment: Updates', 'Reports & Indices',
+                    'Books & Authors', 'Important Dates', 'West Bengal: Current Affairs',
+                    'Kolkata: Updates', 'Government Schemes: WB', 'Culture & Heritage',
+                    'Defence Updates', 'Space Missions', 'Person in News', 'Places in News'
+                ],
+                'General': [
+                    'Reasoning: Verbal', 'Reasoning: Non-Verbal', 'Quant: Number Series',
+                    'Quant: Percentage', 'Quant: Ratio & Proportion', 'Quant: Average',
+                    'Quant: Time & Work', 'Quant: Time & Distance', 'English: Grammar',
+                    'English: Vocabulary', 'English: Comprehension', 'Computer: Basics',
+                    'Interview Skills', 'Essay Writing', 'Precis Writing', 'Current Affairs Monthly'
+                ]
+            };
+
+            const pool = [];
+            let idCounter = 1000;
+
+            for (const [subject, topics] of Object.entries(subjectTopics)) {
+                for (const topic of topics) {
+                    pool.push({
+                        id: `pool-${idCounter++}`,
+                        morning: topic,
+                        evening: `${topic} - Practice/MCQs`,
+                        subject: subject,
+                        hours: 3.5,
+                        test: '-',
+                        origin: 'pool'
+                    });
+                }
+            }
+
+            return pool;
+        }
+
+        function getNextTaskForSubject(subjectName) {
+            // Get random task from the topic pool for a subject
+            const pool = createSubjectTopicPool();
+            const subjectTasks = pool.filter(t => t.subject.toLowerCase().includes(subjectName.toLowerCase()) || 
+                                                 subjectName.toLowerCase().includes(t.subject.toLowerCase()));
+            
+            if (subjectTasks.length > 0) {
+                const randomIndex = Math.floor(Math.random() * subjectTasks.length);
+                return subjectTasks[randomIndex];
+            }
+            return null;
+        }
+
+        function getRandomTaskFromPool() {
+            // Get random task from any subject
+            const pool = createSubjectTopicPool();
+            const unscheduledTasks = pool.filter(t => 
+                !appData.tasks.some(existing => existing.morning === t.morning)
+            );
+            
+            if (unscheduledTasks.length > 0) {
+                const randomIndex = Math.floor(Math.random() * unscheduledTasks.length);
+                return unscheduledTasks[randomIndex];
+            }
+            return null;
+        }
+
+        function scheduleNewTask(targetDate = null, preferredSubject = null) {
+            // Schedule a new task - either random or from preferred subject
+            let newTask = null;
+            
+            if (preferredSubject) {
+                newTask = getNextTaskForSubject(preferredSubject);
+            }
+            
+            if (!newTask) {
+                newTask = getRandomTaskFromPool();
+            }
+
+            if (newTask) {
+                const dateToUse = targetDate || toLocalISODate(new Date());
+                const taskWithDate = {
+                    ...newTask,
+                    id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    date: dateToUse
+                };
+                
+                appData.tasks.push(taskWithDate);
+                saveAppData();
+                return taskWithDate;
+            }
+            return null;
+        }
+
+        let pendingCompletedTaskId = null;
+
         function toggleTask(taskId) {
-            appData.userProgress.completedTasks[taskId] = !appData.userProgress.completedTasks[taskId];
+            const wasCompleted = !!appData.userProgress.completedTasks[taskId];
+            const isActive = appData.userProgress.activeDailyTaskId === taskId;
+
+            if (wasCompleted) {
+                // If the user unchecks a completed task, restore the previous pending task.
+                delete appData.userProgress.completedTasks[taskId];
+
+                if (isActive) {
+                    const restore = appData.userProgress.pendingScheduleRestore;
+                    if (restore?.previousTaskId) {
+                        appData.userProgress.activeDailyTaskId = restore.previousTaskId;
+                    } else {
+                        appData.userProgress.activeDailyTaskId = taskId;
+                    }
+                    appData.userProgress.pendingScheduleRestore = null;
+                    showToast('Pending task restored.', 'info');
+                }
+            } else {
+                // Mark current task complete.
+                appData.userProgress.completedTasks[taskId] = true;
+
+                if (isActive) {
+                    appData.userProgress.pendingScheduleRestore = {
+                        previousTaskId: taskId,
+                        previousDate: getEffectiveTaskDate(getTaskById(taskId)) || null,
+                        replacedByTaskId: null
+                    };
+                    appData.userProgress.activeDailyTaskId = taskId;
+
+                    saveProgress();
+                    renderAll();
+                    showToast('✅ Task completed! Choose the next task in the modal.', 'success');
+                    setTimeout(() => openScheduleTaskModal(), 250);
+                    return;
+                }
+            }
+
             saveProgress();
             renderAll();
+        }
+
+        // Schedule Next Task Modal Functions
+        function openScheduleTaskModal() {
+            const modal = document.getElementById('scheduleTaskModal');
+            const subjectSelect = document.getElementById('nextTaskSubject');
+            const topicSelect = document.getElementById('nextTaskTopic');
+            const dateInput = document.getElementById('nextTaskDate');
+            
+            // Reset modal
+            topicSelect.disabled = true;
+            topicSelect.innerHTML = '<option value="">-- Select a subject first --</option>';
+            subjectSelect.value = '';
+            
+            // Populate subjects
+            const subjects = appData.subjects || [];
+            subjectSelect.innerHTML = '<option value="">-- Choose a Subject --</option>';
+            subjects.forEach(subj => {
+                const option = document.createElement('option');
+                option.value = subj;
+                option.textContent = subj;
+                subjectSelect.appendChild(option);
+            });
+            
+            // Set default date to tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            dateInput.value = toLocalISODate(tomorrow);
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeScheduleTaskModal() {
+            document.getElementById('scheduleTaskModal').classList.add('hidden');
+            pendingCompletedTaskId = null;
+        }
+
+        function loadTopicsForSubject() {
+            const subject = document.getElementById('nextTaskSubject').value;
+            const topicSelect = document.getElementById('nextTaskTopic');
+            
+            if (!subject) {
+                topicSelect.disabled = true;
+                topicSelect.innerHTML = '<option value="">-- Select a subject first --</option>';
+                return;
+            }
+            
+            // Get all topics for this subject from the master pool
+            const pool = createSubjectTopicPool();
+            const subjectPoolTasks = pool.filter(t => t.subject === subject);
+            
+            // Get all completed morning task names
+            const completedTopicNames = new Set();
+            (appData.tasks || []).forEach(t => {
+                if (appData.userProgress.completedTasks && appData.userProgress.completedTasks[t.id]) {
+                    if (t.morning) completedTopicNames.add(t.morning);
+                }
+            });
+
+            const incompleteTopics = subjectPoolTasks.filter(pTask => {
+                return !completedTopicNames.has(pTask.morning);
+            });
+            
+            topicSelect.innerHTML = '<option value="">-- Choose a Topic --</option>';
+            incompleteTopics.forEach(task => {
+                const option = document.createElement('option');
+                option.value = task.id;
+                option.textContent = task.morning || task.title || 'Untitled Topic';
+                topicSelect.appendChild(option);
+            });
+            
+            topicSelect.disabled = false;
+        }
+
+        function setNextTaskDate(which) {
+            const dateInput = document.getElementById('nextTaskDate');
+            const d = new Date();
+            if (which === 'tomorrow') {
+                d.setDate(d.getDate() + 1);
+            }
+            dateInput.value = toLocalISODate(d);
+        }
+
+        function confirmScheduleNextTask() {
+            const subject = document.getElementById('nextTaskSubject').value;
+            const taskId = document.getElementById('nextTaskTopic').value;
+            const date = document.getElementById('nextTaskDate').value;
+            
+            if (!subject || !taskId || !date) {
+                showToast('Please select subject, topic, and date', 'error');
+                return;
+            }
+            
+            // Assign the chosen task as the next active Daily Focus task.
+            let chosenTask = getTaskById(taskId);
+            
+            // If not found in current scheduled tasks, look in the topic pool and add it
+            if (!chosenTask) {
+                const pool = createSubjectTopicPool();
+                const poolTask = pool.find(t => t.id === taskId);
+                if (poolTask) {
+                    chosenTask = {
+                        ...poolTask,
+                        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        date: date
+                    };
+                    appData.tasks.push(chosenTask);
+                    saveUserAppData(); 
+                }
+            }
+
+            if (!chosenTask) {
+                showToast('Selected topic not found.', 'error');
+                return;
+            }
+
+            // Update taskId to the newly created task's ID so progress state is correct
+            const finalTaskId = chosenTask.id;
+
+            // Reschedule the selected task, but Daily Focus will only display the active one.
+            appData.userProgress.customDates ||= {};
+            appData.userProgress.customDates[finalTaskId] = date;
+
+            const previousTaskId = appData.userProgress.pendingScheduleRestore?.previousTaskId || appData.userProgress.activeDailyTaskId;
+            appData.userProgress.activeDailyTaskId = finalTaskId;
+            appData.userProgress.pendingScheduleRestore = {
+                previousTaskId: previousTaskId,
+                previousDate: date,
+                replacedByTaskId: finalTaskId
+            };
+
+            // If the chosen task was not previously in the task list, ensure it behaves as the current task.
+            // Here we are reusing the existing task list so monthly/subject views stay consistent.
+            
+            showToast('✅ Next task scheduled!', 'success');
+            closeScheduleTaskModal();
+            saveProgress();
+            renderAll();
+        }
+
+        function quickAddTask() {
+            // Quick add random task for today
+            const newTask = scheduleNewTask(toLocalISODate(new Date()));
+            if (newTask) {
+                showToast(`Task added: ${newTask.morning}`, 'success');
+                renderAll();
+            } else {
+                showToast('No more topics available!', 'info');
+            }
+        }
+
+        function addTaskForSubject(subjectName) {
+            const date = prompt('Enter date for task (YYYY-MM-DD):', toLocalISODate(new Date()));
+            if (date) {
+                const newTask = scheduleNewTask(date, subjectName);
+                if (newTask) {
+                    showToast(`New ${subjectName} task scheduled!`, 'success');
+                    renderAll();
+                }
+            }
         }
 
         function updateTestScore(testId, score) {
@@ -3511,6 +4006,49 @@
             saveProgress();
             renderAll();
             showToast('Target date updated', 'success');
+        }
+
+        function toggleWeaknessTracker(event) {
+            if (event) {
+                const interactive = event.target && event.target.closest('button, input, select, textarea, a, label');
+                if (interactive && !event.target.closest('#weaknessToggleBtn')) {
+                    return;
+                }
+            }
+            if (!appData.userProgress) appData.userProgress = {};
+            const current = appData.userProgress.weaknessTrackerCollapsed === true;
+            appData.userProgress.weaknessTrackerCollapsed = !current;
+            saveProgress();
+            renderAll();
+        }
+
+        function getActiveDailyTask() {
+            const activeId = appData.userProgress?.activeDailyTaskId;
+            if (activeId) {
+                const active = getTaskById(activeId);
+                if (active) return active;
+            }
+
+            const pending = (appData.tasks || [])
+                .filter(t => !appData.userProgress.completedTasks[t.id])
+                .slice()
+                .sort((a, b) => {
+                    const da = getEffectiveTaskDate(a) || '9999-12-31';
+                    const db = getEffectiveTaskDate(b) || '9999-12-31';
+                    return da.localeCompare(db) || (a.subject || '').localeCompare(b.subject || '') || (a.morning || '').localeCompare(b.morning || '');
+                });
+
+            return pending[0] || null;
+        }
+
+        function getTaskById(taskId) {
+            return (appData.tasks || []).find(t => t.id === taskId) || null;
+        }
+
+        function setInitialActiveTaskIfNeeded() {
+            if (appData.userProgress?.activeDailyTaskId) return;
+            const first = getActiveDailyTask();
+            if (first) appData.userProgress.activeDailyTaskId = first.id;
         }
 
         function saveEditableHeadline() {
@@ -4314,6 +4852,176 @@
         }, true);
 
         // =============================================
+        // WEAKNESS TRACKER (Collapsible Card)
+        // =============================================
+        function toggleWeaknessTracker() {
+            const list = document.getElementById('weaknessList');
+            const icon = document.getElementById('weaknessToggleIcon');
+            const card = document.getElementById('weaknessTrackerCard');
+            
+            if (!list || !icon || !card) return;
+            
+            const isCollapsed = list.classList.contains('max-h-0');
+            
+            if (isCollapsed) {
+                // Expand
+                list.classList.remove('max-h-0', 'opacity-0');
+                list.classList.add('max-h-[1000px]', 'opacity-100');
+                icon.style.transform = 'rotate(90deg)';
+                icon.textContent = '▼';
+            } else {
+                // Collapse
+                list.classList.add('max-h-0', 'opacity-0');
+                list.classList.remove('max-h-[1000px]', 'opacity-100');
+                icon.style.transform = 'rotate(0deg)';
+                icon.textContent = '▶';
+            }
+            
+            // Save preference
+            if (appData.userProgress) {
+                appData.userProgress.weaknessTrackerCollapsed = !isCollapsed;
+                saveProgress();
+            }
+        }
+
+        function renderWeaknessTracker() {
+            const list = document.getElementById('weaknessList');
+            const countEl = document.getElementById('weaknessCount');
+            const icon = document.getElementById('weaknessToggleIcon');
+            
+            if (!list || !countEl) return;
+            
+            // Get overdue tasks and tests
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const overdueItems = [];
+            
+            // Check tasks
+            (appData.tasks || []).forEach(task => {
+                const isCompleted = appData.userProgress.completedTasks[task.id];
+                const taskDate = task.date ? new Date(task.date) : null;
+                
+                if (taskDate && !isCompleted && taskDate < today) {
+                    const daysOverdue = Math.floor((today - taskDate) / (1000 * 60 * 60 * 24));
+                    overdueItems.push({
+                        type: 'task',
+                        id: task.id,
+                        title: task.morning || 'Untitled Task',
+                        subject: task.subject || 'General',
+                        daysOverdue: daysOverdue,
+                        date: task.date
+                    });
+                }
+            });
+            
+            // Check tests
+            const allTests = getAllTestsMerged();
+            allTests.forEach(test => {
+                const score = appData.userProgress.testScores[test.id];
+                const testDate = test.date ? new Date(test.date) : null;
+                
+                if (testDate && (score === null || score === undefined || score === 0) && testDate < today) {
+                    const daysOverdue = Math.floor((today - testDate) / (1000 * 60 * 60 * 24));
+                    overdueItems.push({
+                        type: 'test',
+                        id: test.id,
+                        title: test.name || test.test || 'Untitled Test',
+                        subject: test.subject || test.type || 'General',
+                        daysOverdue: daysOverdue,
+                        date: test.date,
+                        marks: test.marks || test.mcqs || 0,
+                        target: test.target || 0
+                    });
+                }
+            });
+            
+            // Update count
+            countEl.textContent = `${overdueItems.length} item${overdueItems.length !== 1 ? 's' : ''}`;
+            
+            // Load collapse state
+            const isCollapsed = appData.userProgress.weaknessTrackerCollapsed !== false; // default to collapsed
+            if (isCollapsed) {
+                list.classList.add('max-h-0', 'opacity-0');
+                list.classList.remove('max-h-[1000px]', 'opacity-100');
+                if (icon) {
+                    icon.style.transform = 'rotate(0deg)';
+                    icon.textContent = '▶';
+                }
+            } else {
+                list.classList.remove('max-h-0', 'opacity-0');
+                list.classList.add('max-h-[1000px]', 'opacity-100');
+                if (icon) {
+                    icon.style.transform = 'rotate(90deg)';
+                    icon.textContent = '▼';
+                }
+            }
+            
+            // Render list
+            if (overdueItems.length === 0) {
+                list.innerHTML = '<div class="p-6 text-center text-slate-500 font-bold">🎉 No missed deadlines! You\'re on track.</div>';
+                return;
+            }
+            
+            list.innerHTML = overdueItems.map(item => {
+                const progressColor = getSubjectProgressPalette(item.subject);
+                const randomFontColor = getRandomReadableFontColor(item.id);
+                
+                if (item.type === 'task') {
+                    return `
+                        <div class="flex items-center justify-between gap-3 p-4 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all rounded-xl">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-xs font-bold px-2 py-1 rounded-lg" style="background: ${progressColor.cellBg}; color: ${randomFontColor};">📚 ${item.subject}</span>
+                                    <span class="text-xs font-extrabold text-rose-600">⚠️ ${item.daysOverdue} day${item.daysOverdue !== 1 ? 's' : ''} overdue</span>
+                                </div>
+                                <div class="font-bold text-slate-800 dark:text-slate-200">${item.title}</div>
+                                <div class="text-xs text-slate-500 mt-1">Scheduled: ${formatEuro(item.date)}</div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" class="w-5 h-5 rounded border-rose-300 text-rose-600 focus:ring-rose-500" ${appData.userProgress.completedTasks[item.id] ? 'checked' : ''} onchange="toggleTask('${item.id}'); event.stopPropagation();">
+                                <button class="px-3 py-2 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/30 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-all" onclick="rescheduleTask('${item.id}'); event.stopPropagation();">Reschedule</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="flex items-center justify-between gap-3 p-4 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all rounded-xl">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-xs font-bold px-2 py-1 rounded-lg" style="background: ${progressColor.cellBg}; color: ${randomFontColor};">✅ ${item.subject}</span>
+                                    <span class="text-xs font-extrabold text-rose-600">⚠️ ${item.daysOverdue} day${item.daysOverdue !== 1 ? 's' : ''} overdue</span>
+                                </div>
+                                <div class="font-bold text-slate-800 dark:text-slate-200">${item.title}</div>
+                                <div class="text-xs text-slate-500 mt-1">Scheduled: ${formatEuro(item.date)} • ${item.marks} marks</div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button class="px-3 py-2 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/30 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-all" onclick="enterTestScore('${item.id}'); event.stopPropagation();">Enter Score</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            }).join('');
+        }
+
+        function rescheduleTask(taskId) {
+            const task = appData.tasks.find(t => t.id === taskId);
+            if (!task) return;
+            
+            const newDate = prompt('Enter new date (YYYY-MM-DD):', toLocalISODate(new Date()));
+            if (newDate) {
+                updateTaskDate(taskId, newDate);
+            }
+        }
+
+        function enterTestScore(testId) {
+            const score = prompt('Enter your score:', '');
+            if (score !== null) {
+                updateTestScore(testId, score);
+            }
+        }
+
+        // =============================================
         // INITIALIZATION
         // =============================================
         window.onload = () => {
@@ -4366,6 +5074,46 @@
             });
         };
     </script>
+
+    <!-- Schedule Next Task Modal -->
+    <div id="scheduleTaskModal" class="modal fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
+        <div class="glass-strong rounded-3xl w-full max-w-lg p-6 flex flex-col gap-5 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xl font-bold gradient-text">📅 Schedule Next Topic</h3>
+                <button onclick="closeScheduleTaskModal()" class="text-slate-400 hover:text-slate-600 font-bold p-1">✕</button>
+            </div>
+
+            <div class="flex flex-col gap-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">📚 Select Subject</label>
+                    <select id="nextTaskSubject" onchange="loadTopicsForSubject()" class="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-indigo-500 font-bold">
+                        <!-- Options filled via JS -->
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">📖 Select Topic</label>
+                    <select id="nextTaskTopic" class="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-indigo-500 font-bold" disabled>
+                        <option value="">-- Select a subject first --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">🗓️ Start Date</label>
+                    <input type="date" id="nextTaskDate" class="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-indigo-500 font-bold">
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="setNextTaskDate('today')" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Today</button>
+                        <button onclick="setNextTaskDate('tomorrow')" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Tomorrow</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 mt-2">
+                <button onclick="closeScheduleTaskModal()" class="px-4 py-2 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button onclick="confirmScheduleNextTask()" class="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:opacity-90 shadow-lg shadow-indigo-600/20">Schedule Task</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>
